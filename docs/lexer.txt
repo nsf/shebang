@@ -1,0 +1,75 @@
+--** Lexer **--
+
+In general lexer takes an io.Reader and scans that stream for valid tokens.
+Stream is expected to be encoded in utf-8 encoding. Currently lexer doesn't
+have any error recovering strategy. Therefore its state becomes invalid after
+error has been encountered. Lexer buffers the stream internally, so it may read
+more bytes at once than needed. Simple usage example is the following:
+
+----------------------------------------------------------------------
+t := NewLexer(os.Stdin)
+for {
+	tok, line, col, lit, err := t.Next()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+
+	if tok == EOF {
+		fmt.Println(tok)
+		return
+	}
+
+	fmt.Printf("%s: (%d:%d) %s\n", tok, line, col, lit)
+}
+----------------------------------------------------------------------
+
+--** Lexer tokens **--
+
+IDENT:
+	Identifier, corresponding regexp is: [a-zA-Z_][a-zA-Z_0-9]* 
+	(but includes unicode letters)
+
+INT:
+	Integer literal, currently plain integers like 123 and hex numbers
+	0xDEADBEEF, 0XDEADBEEF are supported.
+
+FLOAT:
+	Floating point literal, it's quite strict, examples:
+	0.0, 3.1415, 10.0e-2, 0.543E1, 16.0e+5
+
+	Invalid examples:
+	0., .0, 5.0E, 0.5234e-, 7e+5
+
+STRING:
+	Interpreted string literal, both ' and " can be used for string
+	literals, if string starts with ' it must be ended with ' as well.
+	Valid escape sequences:
+	'\a' - bell
+	'\b' - backspace
+	'\f' - form feed
+	'\n' - new line
+	'\r' - carriage return
+	'\t' - horizontal tab
+	'\v' - vertical tab
+	'\\' - backslash
+	'\'' - single quote
+	'\"' - double quote
+	'\xFF' - hex byte (must contain two hex digits always, represents
+	single byte)
+
+	Interpreted string literal cannot span across multiple lines.
+
+RAW_STRING:
+	Uninterpreted multiline strings. Delimited by ` (backtick). May contain
+	any character except backtick. No valid escape sequences.
+
+COMMENT_L:
+	C++ style line comment. Starts with '//', ends at the end of the line.
+
+COMMENT_ML:
+	C style multiline comment. Starts with '/*', ends with '*/'. Doesn't nest.
+
+*:
+	Everything else is a simple 1-3 character operator. No special logic
+	applied. Lexer takes the longest match.

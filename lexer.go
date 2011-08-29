@@ -124,7 +124,7 @@ type Error string
 func (e Error) String() string { return string(e) }
 
 //-------------------------------------------------------------------------------
-// Tokenizer
+// Lexer
 //-------------------------------------------------------------------------------
 
 type tokenInfo struct {
@@ -134,7 +134,7 @@ type tokenInfo struct {
 	lit string
 }
 
-type Tokenizer struct {
+type Lexer struct {
 	r *bufio.Reader
 	b bytes.Buffer
 	line int
@@ -145,8 +145,8 @@ type Tokenizer struct {
 	deferToken tokenInfo
 }
 
-func NewTokenizer(r io.Reader) *Tokenizer {
-	t := new(Tokenizer)
+func NewLexer(r io.Reader) *Lexer {
+	t := new(Lexer)
 	t.r = bufio.NewReader(r)
 	t.line = 1
 	t.col = 0
@@ -192,12 +192,12 @@ func isHexDigit(rune int) bool {
 }
 
 // Set a deferred token
-func (t *Tokenizer) setDeferToken(tok Token, line, col int, lit string) {
+func (t *Lexer) setDeferToken(tok Token, line, col int, lit string) {
 	t.deferToken = tokenInfo{tok, line, col, lit}
 }
 
 // Read the next rune and automatically increment column and line if necessary
-func (t *Tokenizer) readRune() (int, os.Error) {
+func (t *Lexer) readRune() (int, os.Error) {
 	rune, _, err := t.r.ReadRune()
 	if err != nil {
 		return rune, err
@@ -216,7 +216,7 @@ func (t *Tokenizer) readRune() (int, os.Error) {
 }
 
 // Unread rune, manage line and column as well
-func (t *Tokenizer) unreadRune() {
+func (t *Lexer) unreadRune() {
 	if t.prevCol == -1 || t.lastRune == -1 {
 		// DEBUG, disable for speed
 		panic("more than one unreadRune, without corresponding readRune")
@@ -235,19 +235,19 @@ func (t *Tokenizer) unreadRune() {
 }
 
 // Return temporary buffer contents and reset the buffer
-func (t *Tokenizer) flushBuffer() string {
+func (t *Lexer) flushBuffer() string {
 	s := t.b.String()
 	t.b.Reset()
 	return s
 }
 
 // Checks if buffer contains '0' and only '0' (for hex numbers)
-func (t *Tokenizer) bufHasOnly0() bool {
+func (t *Lexer) bufHasOnly0() bool {
 	return t.b.Len() == 1 && t.b.Bytes()[0] == '0'
 }
 
 // Matches two possible variants: '1' or '12'
-func (t *Tokenizer) match2(tok1 Token, lit1 string, rune2 int, tok2 Token, lit2 string) (Token, int, int, string) {
+func (t *Lexer) match2(tok1 Token, lit1 string, rune2 int, tok2 Token, lit2 string) (Token, int, int, string) {
 	line, col := t.line, t.col
 
 	rune, err := t.readRune()
@@ -265,14 +265,14 @@ func (t *Tokenizer) match2(tok1 Token, lit1 string, rune2 int, tok2 Token, lit2 
 }
 
 // Shortcut for '+=', '-=', etc. tokens (second rune is '=')
-func (t *Tokenizer) match2eq(tok1 Token, lit1 string, tok2 Token, lit2 string) (Token, int, int, string) {
+func (t *Lexer) match2eq(tok1 Token, lit1 string, tok2 Token, lit2 string) (Token, int, int, string) {
 	return t.match2(tok1, lit1, '=', tok2, lit2)
 }
 
 // Matches three possible variants: '1' or '12' or '123'
-func (t *Tokenizer) match3(tok1 Token, lit1 string,
-			   rune2 int, tok2 Token, lit2 string,
-			   rune3 int, tok3 Token, lit3 string) (Token, int, int, string) {
+func (t *Lexer) match3(tok1 Token, lit1 string,
+		       rune2 int, tok2 Token, lit2 string,
+		       rune3 int, tok3 Token, lit3 string) (Token, int, int, string) {
 	line, col := t.line, t.col
 
 	// try second
@@ -312,7 +312,7 @@ func hexPairToByte(rune1 int, rune2 int) byte {
 	return byte(ui)
 }
 
-func (t *Tokenizer) readHexRuneInString(line, col int) int {
+func (t *Lexer) readHexRuneInString(line, col int) int {
 	rune, err := t.readRune()
 	if err != nil {
 		panicOnNonEOF(err)
@@ -330,7 +330,7 @@ func (t *Tokenizer) readHexRuneInString(line, col int) int {
 
 // Process escape characters and put a processed token into the temporary
 // buffer. Panics on error
-func (t *Tokenizer) escape(line, col int) {
+func (t *Lexer) escape(line, col int) {
 	rune, err := t.readRune()
 	if err != nil {
 		panicOnNonEOF(err)
@@ -368,7 +368,7 @@ func (t *Tokenizer) escape(line, col int) {
 }
 
 // Scan wrapper, we catch all the panics here
-func (t *Tokenizer) Next() (tok Token, line, col int, lit string, err os.Error) {
+func (t *Lexer) Next() (tok Token, line, col int, lit string, err os.Error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = e.(os.Error)
@@ -378,7 +378,7 @@ func (t *Tokenizer) Next() (tok Token, line, col int, lit string, err os.Error) 
 	return
 }
 
-func (t *Tokenizer) lastRuneIsStar() bool {
+func (t *Lexer) lastRuneIsStar() bool {
 	return t.b.Len() > 2 && t.b.Bytes()[t.b.Len()-1] == '*'
 }
 
@@ -387,7 +387,7 @@ func (t *Tokenizer) lastRuneIsStar() bool {
 // - Line where the beginning of the token is located
 // - Column where the token begins
 // - Corresponding literal (if any)
-func (t *Tokenizer) next() (Token, int, int, string) {
+func (t *Lexer) next() (Token, int, int, string) {
 	var rune, line, col, dline, dcol, strrune int
 	var err os.Error
 
@@ -738,7 +738,7 @@ error_check:
 }
 
 func main() {
-	t := NewTokenizer(os.Stdin)
+	t := NewLexer(os.Stdin)
 	for {
 		tok, line, col, lit, err := t.Next()
 		if err != nil {
@@ -746,9 +746,9 @@ func main() {
 			return
 		}
 		if tok == EOF {
-			fmt.Println(tokenStrings[tok])
+			fmt.Println(tok)
 			return
 		}
-		fmt.Printf("%s: (%d:%d) %s\n", tokenStrings[tok], line, col, lit)
+		fmt.Printf("%s: (%d:%d) %s\n", tok, line, col, lit)
 	}
 }
