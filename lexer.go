@@ -7,6 +7,7 @@ import (
 	"bufio"
 	"bytes"
 	"unicode"
+	"strconv"
 )
 
 //-------------------------------------------------------------------------------
@@ -292,6 +293,70 @@ func (t *Tokenizer) match3(tok1 Token, lit1 string,
 	return tok3, line, col, lit3
 }
 
+func hexPairToByte(rune1 int, rune2 int) byte {
+	// TODO: this one is slowpoke probably
+	s := string([]byte{byte(rune1), byte(rune2)})
+	ui, err := strconv.Btoui64(s, 16)
+	if err != nil {
+		panic(err)
+	}
+	return byte(ui)
+}
+
+func (t *Tokenizer) readHexRuneInString(line, col int) int {
+	rune, err := t.readRune()
+	if err != nil {
+		panicOnNonEOF(err)
+		s := fmt.Sprintf("Bad hex escape sequence in string at: %d:%d", line, col)
+		panic(os.NewError(s))
+	}
+
+	if !isHexDigit(rune) {
+		s := fmt.Sprintf("Bad hex escape sequence in string at: %d:%d", line, col)
+		panic(os.NewError(s))
+	}
+
+	return rune
+}
+
+// Process escape characters and put a processed token into the temporary
+// buffer. Panics on error
+func (t *Tokenizer) escape(line, col int) {
+	rune, err := t.readRune()
+	if err != nil {
+		panicOnNonEOF(err)
+		s := fmt.Sprintf("Incomplete string at: %d:%d", line, col)
+		panic(os.NewError(s))
+	}
+
+	switch rune {
+	case 'a':
+		t.b.WriteRune('\a')
+	case 'b':
+		t.b.WriteRune('\b')
+	case 'f':
+		t.b.WriteRune('\f')
+	case 'n':
+		t.b.WriteRune('\n')
+	case 'r':
+		t.b.WriteRune('\r')
+	case 't':
+		t.b.WriteRune('\t')
+	case 'v':
+		t.b.WriteRune('\v')
+	case '\\':
+		t.b.WriteRune('\\')
+	case '"':
+		t.b.WriteRune('"')
+	case '\'':
+		t.b.WriteRune('\'')
+	case 'x':
+		// yuck, but whatever
+		rune1 := t.readHexRuneInString(line, col)
+		rune2 := t.readHexRuneInString(line, col)
+		t.b.WriteByte(hexPairToByte(rune1, rune2))
+	}
+}
 
 // Scans the stream for the next token and returns:
 // - Token kind
@@ -299,7 +364,7 @@ func (t *Tokenizer) match3(tok1 Token, lit1 string,
 // - Column where the token begins
 // - Corresponding literal (if any)
 func (t *Tokenizer) Next() (Token, int, int, string) {
-	var rune, line, col, dline, dcol int
+	var rune, line, col, dline, dcol, strrune int
 	var err os.Error
 
 	if t.deferToken.line != 0 {
@@ -367,8 +432,34 @@ read_more:
 	}
 
 scan_raw_string:
-scan_string:
 	panic("not implemented")
+
+scan_string:
+	line, col = t.line, t.col
+	strrune = rune
+	t.b.WriteRune(rune)
+	for {
+		rune, err = t.readRune()
+		if err != nil {
+			panicOnNonEOF(err)
+			s := fmt.Sprintf("Incomplete string at: %d:%d", line, col)
+			panic(os.NewError(s))
+		}
+
+		switch rune {
+		case '\\':
+			t.escape(line, col)
+			continue
+		case '\n':
+			s := fmt.Sprintf("New line in string at: %d:%d", line, col)
+			panic(os.NewError(s))
+		case strrune:
+			t.b.WriteRune(rune)
+			return STRING, line, col, t.flushBuffer()
+		}
+
+		t.b.WriteRune(rune)
+	}
 
 scan_number:
 	line, col = t.line, t.col
