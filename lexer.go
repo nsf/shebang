@@ -115,6 +115,9 @@ func (t Token) String() (s string) {
 	return
 }
 
+type Error string
+func (e Error) String() string { return string(e) }
+
 //-------------------------------------------------------------------------------
 // Tokenizer
 //-------------------------------------------------------------------------------
@@ -309,12 +312,12 @@ func (t *Tokenizer) readHexRuneInString(line, col int) int {
 	if err != nil {
 		panicOnNonEOF(err)
 		s := fmt.Sprintf("Bad hex escape sequence in string at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	if !isHexDigit(rune) {
 		s := fmt.Sprintf("Bad hex escape sequence in string at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	return rune
@@ -327,7 +330,7 @@ func (t *Tokenizer) escape(line, col int) {
 	if err != nil {
 		panicOnNonEOF(err)
 		s := fmt.Sprintf("Incomplete string at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	switch rune {
@@ -359,12 +362,23 @@ func (t *Tokenizer) escape(line, col int) {
 	}
 }
 
+// Scan wrapper, we catch all the panics here
+func (t *Tokenizer) Next() (tok Token, line, col int, lit string, err os.Error) {
+	defer func() {
+		if e := recover(); e != nil {
+			err = e.(os.Error)
+		}
+	}()
+	tok, line, col, lit = t.next()
+	return
+}
+
 // Scans the stream for the next token and returns:
 // - Token kind
 // - Line where the beginning of the token is located
 // - Column where the token begins
 // - Corresponding literal (if any)
-func (t *Tokenizer) Next() (Token, int, int, string) {
+func (t *Tokenizer) next() (Token, int, int, string) {
 	var rune, line, col, dline, dcol, strrune int
 	var err os.Error
 
@@ -441,7 +455,7 @@ scan_raw_string:
 		if err != nil {
 			panicOnNonEOF(err)
 			s := fmt.Sprintf("Incomplete string at: %d:%d", line, col)
-			panic(os.NewError(s))
+			panic(Error(s))
 		}
 
 		if rune == '`' {
@@ -459,7 +473,7 @@ scan_string:
 		if err != nil {
 			panicOnNonEOF(err)
 			s := fmt.Sprintf("Incomplete string at: %d:%d", line, col)
-			panic(os.NewError(s))
+			panic(Error(s))
 		}
 
 		switch rune {
@@ -468,7 +482,7 @@ scan_string:
 			continue
 		case '\n':
 			s := fmt.Sprintf("New line in string at: %d:%d", line, col)
-			panic(os.NewError(s))
+			panic(Error(s))
 		case strrune:
 			t.b.WriteRune(rune)
 			return STRING, line, col, t.flushBuffer()
@@ -510,12 +524,12 @@ scan_number_hex:
 	if err != nil {
 		panicOnNonEOF(err)
 		s := fmt.Sprintf("Bad hex number literal at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	if !isHexDigit(rune) {
 		s := fmt.Sprintf("Bad hex number literal at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	for {
@@ -594,13 +608,13 @@ scan_number_exponent:
 	if err != nil {
 		panicOnNonEOF(err)
 		s := fmt.Sprintf("Bad floating point literal at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	// if it's not a number, '+' or '-' after [eE], panic
 	if !unicode.IsDigit(rune) && rune != '+' && rune != '-' {
 		s := fmt.Sprintf("Bad floating point literal at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	if rune == '+' || rune == '-' {
@@ -610,13 +624,13 @@ scan_number_exponent:
 		if err != nil {
 			panicOnNonEOF(err)
 			s := fmt.Sprintf("Bad floating point literal at: %d:%d", line, col)
-			panic(os.NewError(s))
+			panic(Error(s))
 		}
 	}
 
 	if !unicode.IsDigit(rune) {
 		s := fmt.Sprintf("Bad floating point literal at: %d:%d", line, col)
-		panic(os.NewError(s))
+		panic(Error(s))
 	}
 
 	// ok, we got a correct exponent part, parse it
@@ -663,7 +677,11 @@ error_check:
 func main() {
 	t := NewTokenizer(os.Stdin)
 	for {
-		tok, line, col, lit := t.Next()
+		tok, line, col, lit, err := t.Next()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
 		if tok == EOF {
 			fmt.Println(tokenStrings[tok])
 			return
