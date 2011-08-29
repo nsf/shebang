@@ -69,6 +69,7 @@ var tokenStrings = [...]string{
 	INT: "INT",
 	FLOAT: "FLOAT",
 	STRING: "STRING",
+	RAW_STRING: "RAW_STRING",
 
 	ADD: "ADD",
 	SUB: "SUB",
@@ -432,7 +433,22 @@ read_more:
 	}
 
 scan_raw_string:
-	panic("not implemented")
+	line, col = t.line, t.col
+	for {
+		t.b.WriteRune(rune)
+
+		rune, err = t.readRune()
+		if err != nil {
+			panicOnNonEOF(err)
+			s := fmt.Sprintf("Incomplete string at: %d:%d", line, col)
+			panic(os.NewError(s))
+		}
+
+		if rune == '`' {
+			t.b.WriteRune(rune)
+			return RAW_STRING, line, col, t.flushBuffer()
+		}
+	}
 
 scan_string:
 	line, col = t.line, t.col
