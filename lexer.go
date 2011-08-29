@@ -17,7 +17,7 @@ import (
 type Token int
 
 const (
-	EOF = iota
+	INVALID = iota
 
 	IDENT      // identifier
 	INT        // integer literal
@@ -66,7 +66,7 @@ const (
 )
 
 var tokenStrings = [...]string{
-	EOF: "EOF",
+	INVALID: "INVALID",
 
 	IDENT: "IDENT",
 	INT: "INT",
@@ -399,7 +399,7 @@ func (t *Lexer) next() (Token, int, int, string) {
 
 read_more:
 	rune, err = t.readRune()
-	if err != nil { goto error_check }
+	panicIfFailed(err)
 
 	// big switch, starting point for every token
 	switch {
@@ -732,9 +732,7 @@ scan_ident:
 		}
 	}
 
-error_check:
-	panicOnNonEOF(err)
-	return EOF, 0, 0, ""
+	return INVALID, 0, 0, ""
 }
 
 func main() {
@@ -743,10 +741,6 @@ func main() {
 		tok, line, col, lit, err := t.Next()
 		if err != nil {
 			fmt.Println(err)
-			return
-		}
-		if tok == EOF {
-			fmt.Println(tok)
 			return
 		}
 		fmt.Printf("%s: (%d:%d) %s\n", tok, line, col, lit)

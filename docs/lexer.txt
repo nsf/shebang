@@ -14,12 +14,6 @@ for {
 		fmt.Println(err)
 		return
 	}
-
-	if tok == EOF {
-		fmt.Println(tok)
-		return
-	}
-
 	fmt.Printf("%s: (%d:%d) %s\n", tok, line, col, lit)
 }
 ----------------------------------------------------------------------
