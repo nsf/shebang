@@ -25,6 +25,9 @@ const (
 	STRING     // string literal
 	RAW_STRING // raw string literal (e.g. `hello`)
 
+	COMMENT_L  // line comment (C++)
+	COMMENT_ML // multiline comment (C)
+
 	// OPERATORS
 	ADD        // +
 	SUB        // -
@@ -70,6 +73,8 @@ var tokenStrings = [...]string{
 	FLOAT: "FLOAT",
 	STRING: "STRING",
 	RAW_STRING: "RAW_STRING",
+	COMMENT_L: "COMMENT_L",
+	COMMENT_ML: "COMMENT_ML",
 
 	ADD: "ADD",
 	SUB: "SUB",
@@ -373,6 +378,10 @@ func (t *Tokenizer) Next() (tok Token, line, col int, lit string, err os.Error) 
 	return
 }
 
+func (t *Tokenizer) lastRuneIsStar() bool {
+	return t.b.Len() > 2 && t.b.Bytes()[t.b.Len()-1] == '*'
+}
+
 // Scans the stream for the next token and returns:
 // - Token kind
 // - Line where the beginning of the token is located
@@ -411,7 +420,27 @@ read_more:
 	case rune == '*':
 		return t.match2eq(MUL, "*", MUL_A, "*=")
 	case rune == '/':
-		return t.match2eq(DIV, "/", DIV_A, "/=")
+		// '/' or '/='
+		tok, l, c, lit := t.match2eq(DIV, "/", DIV_A, "/=")
+		if tok == DIV_A {
+			return tok, l, c, lit
+		}
+
+		// '/' or '//'
+		tok, l, c, lit = t.match2(DIV, "/",
+					  '/', COMMENT_L, "//")
+		if tok == COMMENT_L {
+			line, col = l, c
+			goto scan_comment_line
+		}
+
+		// '/' or '/*'
+		tok, l, c, lit = t.match2(DIV, "/",
+					  '*', COMMENT_ML, "/*")
+		if tok == COMMENT_ML {
+			line, col = l, c
+			goto scan_comment_multiline
+		}
 	case rune == '%':
 		return t.match2eq(REM, "%", REM_A, "%=")
 	case rune == '=':
@@ -444,6 +473,40 @@ read_more:
 				'.', DOTDOTDOT, "...")
 	default:
 		goto read_more
+	}
+
+scan_comment_line:
+	t.b.WriteString("//")
+	for {
+		rune, err = t.readRune()
+		if err != nil {
+			panicOnNonEOF(err)
+			return COMMENT_L, line, col, t.flushBuffer()
+		}
+
+		if rune == '\n' {
+			return COMMENT_L, line, col, t.flushBuffer()
+		}
+
+		t.b.WriteRune(rune)
+	}
+
+scan_comment_multiline:
+	t.b.WriteString("/*")
+	for {
+		rune, err = t.readRune()
+		if err != nil {
+			panicOnNonEOF(err)
+			s := fmt.Sprintf("Incomplete multiline comment at: %d:%d", line, col)
+			panic(Error(s))
+		}
+
+		if rune == '/' && t.lastRuneIsStar() {
+			t.b.WriteByte('/')
+			return COMMENT_ML, line, col, t.flushBuffer()
+		}
+
+		t.b.WriteRune(rune)
 	}
 
 scan_raw_string:
