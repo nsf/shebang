@@ -741,7 +741,7 @@ func main() {
 		tok, line, col, lit, err := t.Next()
 		if err != nil {
 			fmt.Println(err)
-			return
+			break
 		}
 		fmt.Printf("%s: (%d:%d) %s\n", tok, line, col, lit)
 	}
