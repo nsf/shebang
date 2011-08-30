@@ -14,36 +14,33 @@ import (
 // Token
 //-------------------------------------------------------------------------------
 
-type Token int
+type Token struct {
+	Type    int
+	Line    int
+	Column  int
+	Literal string
+}
 
 const (
-	INVALID = iota
-
+	INVALID    = iota
 	IDENT      // identifier
 	INT        // integer literal
 	FLOAT      // floating point literal
 	STRING     // string literal
 	RAW_STRING // raw string literal (e.g. `hello`)
-
 	COMMENT_L  // line comment (C++)
 	COMMENT_ML // multiline comment (C)
-
-	// OPERATORS
 	ADD        // +
 	SUB        // -
 	MUL        // *
 	DIV        // /
 	REM        // %
-
 	ASSIGN     // =
 	GT         // >
 	LT         // <
-
 	LEN        // #
 	LSB        // [
 	RSB        // ]
-
-	// big group of operators with the second '=' rune
 	ADD_A      // +=
 	SUB_A      // -=
 	MUL_A      // *=
@@ -53,12 +50,10 @@ const (
 	NEQ        // !=
 	GE         // >=
 	LE         // <=
-
 	SHIFT_R    // >>
 	SHIFT_L    // <<
 	SHIFT_R_A  // >>=
 	SHIFT_L_A  // <<=
-
 	DOT        // .
 	DOTDOT     // ..
 	DOTDOTDOT  // ...
@@ -66,83 +61,70 @@ const (
 )
 
 var tokenStrings = [...]string{
-	INVALID: "INVALID",
-
-	IDENT: "IDENT",
-	INT: "INT",
-	FLOAT: "FLOAT",
-	STRING: "STRING",
+	INVALID:    "INVALID",
+	IDENT:      "IDENT",
+	INT:        "INT",
+	FLOAT:      "FLOAT",
+	STRING:     "STRING",
 	RAW_STRING: "RAW_STRING",
-	COMMENT_L: "COMMENT_L",
+	COMMENT_L:  "COMMENT_L",
 	COMMENT_ML: "COMMENT_ML",
-
-	ADD: "ADD",
-	SUB: "SUB",
-	MUL: "MUL",
-	DIV: "DIV",
-	REM: "REM",
-
-	ASSIGN: "ASSIGN",
-	GT: "GT",
-	LT: "LT",
-
-	LEN: "LEN",
-	LSB: "LSB",
-	RSB: "RSB",
-
-	ADD_A: "ADD_A",
-	SUB_A: "SUB_A",
-	MUL_A: "MUL_A",
-	DIV_A: "DIV_A",
-	REM_A: "REM_A",
-	EQ: "EQ",
-	NEQ: "NEQ",
-	GE: "GE",
-	LE: "LE",
-
-	SHIFT_R: "SHIFT_R",
-	SHIFT_L: "SHIFT_L",
-	SHIFT_R_A: "SHIFT_R_A",
-	SHIFT_L_A: "SHIFT_L_A",
-
-	DOT: "DOT",
-	DOTDOT: "DOTDOT",
-	DOTDOTDOT: "DOTDOTDOT",
+	ADD:        "ADD",
+	SUB:        "SUB",
+	MUL:        "MUL",
+	DIV:        "DIV",
+	REM:        "REM",
+	ASSIGN:     "ASSIGN",
+	GT:         "GT",
+	LT:         "LT",
+	LEN:        "LEN",
+	LSB:        "LSB",
+	RSB:        "RSB",
+	ADD_A:      "ADD_A",
+	SUB_A:      "SUB_A",
+	MUL_A:      "MUL_A",
+	DIV_A:      "DIV_A",
+	REM_A:      "REM_A",
+	EQ:         "EQ",
+	NEQ:        "NEQ",
+	GE:         "GE",
+	LE:         "LE",
+	SHIFT_R:    "SHIFT_R",
+	SHIFT_L:    "SHIFT_L",
+	SHIFT_R_A:  "SHIFT_R_A",
+	SHIFT_L_A:  "SHIFT_L_A",
+	DOT:        "DOT",
+	DOTDOT:     "DOTDOT",
+	DOTDOTDOT:  "DOTDOTDOT",
 }
 
-func (t Token) String() (s string) {
-	if 0 <= t && t < Token(len(tokenStrings)) {
-		s = tokenStrings[t]
+func (t *Token) String() (s string) {
+	if 0 <= t.Type && t.Type < len(tokenStrings) {
+		s = tokenStrings[t.Type]
 	}
 	if s == "" {
-		s = fmt.Sprintf("token(%d)", int(t))
+		s = fmt.Sprintf("token(%d)", t.Type)
 	}
 	return
 }
 
 type Error string
+
 func (e Error) String() string { return string(e) }
 
 //-------------------------------------------------------------------------------
 // Lexer
 //-------------------------------------------------------------------------------
 
-type tokenInfo struct {
-	tok Token
-	line int
-	col int
-	lit string
-}
-
 type Lexer struct {
-	r *bufio.Reader
-	b bytes.Buffer
-	line int
-	col int
-	prevCol int
+	r        *bufio.Reader
+	b        bytes.Buffer
+	line     int
+	col      int
+	prevCol  int
 	lastRune int
 
-	deferToken tokenInfo
+	deferToken Token
 }
 
 func NewLexer(r io.Reader) *Lexer {
@@ -170,8 +152,8 @@ func panicOnNonEOF(error os.Error) {
 }
 
 // Check if 'lit' is a keyword, return it as an identifier otherwise
-func identOrKeyword(line, col int, lit string) (Token, int, int, string) {
-	return IDENT, line, col, lit
+func identOrKeyword(line, col int, lit string) Token {
+	return Token{IDENT, line, col, lit}
 }
 
 // Beginning of an identifier
@@ -189,11 +171,6 @@ func isHexDigit(rune int) bool {
 	return unicode.IsDigit(rune) ||
 		(rune >= 'a' && rune <= 'f') ||
 		(rune >= 'A' && rune <= 'F')
-}
-
-// Set a deferred token
-func (t *Lexer) setDeferToken(tok Token, line, col int, lit string) {
-	t.deferToken = tokenInfo{tok, line, col, lit}
 }
 
 // Read the next rune and automatically increment column and line if necessary
@@ -247,59 +224,57 @@ func (t *Lexer) bufHasOnly0() bool {
 }
 
 // Matches two possible variants: '1' or '12'
-func (t *Lexer) match2(tok1 Token, lit1 string, rune2 int, tok2 Token, lit2 string) (Token, int, int, string) {
+func (t *Lexer) match2(tok1 int, lit1 string, rune2 int, tok2 int, lit2 string) Token {
 	line, col := t.line, t.col
 
 	rune, err := t.readRune()
 	if err != nil {
 		panicOnNonEOF(err)
-		return tok1, line, col, lit1
+		return Token{tok1, line, col, lit1}
 	}
 
 	if rune != rune2 {
 		t.unreadRune()
-		return tok1, line, col, lit1
+		return Token{tok1, line, col, lit1}
 	}
 
-	return tok2, line, col, lit2
+	return Token{tok2, line, col, lit2}
 }
 
 // Shortcut for '+=', '-=', etc. tokens (second rune is '=')
-func (t *Lexer) match2eq(tok1 Token, lit1 string, tok2 Token, lit2 string) (Token, int, int, string) {
+func (t *Lexer) match2eq(tok1 int, lit1 string, tok2 int, lit2 string) Token {
 	return t.match2(tok1, lit1, '=', tok2, lit2)
 }
 
 // Matches three possible variants: '1' or '12' or '123'
-func (t *Lexer) match3(tok1 Token, lit1 string,
-		       rune2 int, tok2 Token, lit2 string,
-		       rune3 int, tok3 Token, lit3 string) (Token, int, int, string) {
+func (t *Lexer) match3(tok1 int, lit1 string, rune2 int, tok2 int, lit2 string, rune3 int, tok3 int, lit3 string) Token {
 	line, col := t.line, t.col
 
 	// try second
 	rune, err := t.readRune()
 	if err != nil {
 		panicOnNonEOF(err)
-		return tok1, line, col, lit1
+		return Token{tok1, line, col, lit1}
 	}
 
 	if rune != rune2 {
 		t.unreadRune()
-		return tok1, line, col, lit1
+		return Token{tok1, line, col, lit1}
 	}
 
 	// try third
 	rune, err = t.readRune()
 	if err != nil {
 		panicOnNonEOF(err)
-		return tok2, line, col, lit2
+		return Token{tok2, line, col, lit2}
 	}
 
 	if rune != rune3 {
 		t.unreadRune()
-		return tok2, line, col, lit2
+		return Token{tok2, line, col, lit2}
 	}
 
-	return tok3, line, col, lit3
+	return Token{tok3, line, col, lit3}
 }
 
 func hexPairToByte(rune1 int, rune2 int) byte {
@@ -368,13 +343,13 @@ func (t *Lexer) escape(line, col int) {
 }
 
 // Scan wrapper, we catch all the panics here
-func (t *Lexer) Next() (tok Token, line, col int, lit string, err os.Error) {
+func (t *Lexer) Next() (tok Token, err os.Error) {
 	defer func() {
 		if e := recover(); e != nil {
 			err = e.(os.Error)
 		}
 	}()
-	tok, line, col, lit = t.next()
+	tok = t.next()
 	return
 }
 
@@ -387,14 +362,14 @@ func (t *Lexer) lastRuneIsStar() bool {
 // - Line where the beginning of the token is located
 // - Column where the token begins
 // - Corresponding literal (if any)
-func (t *Lexer) next() (Token, int, int, string) {
+func (t *Lexer) next() Token {
 	var rune, line, col, dline, dcol, strrune int
 	var err os.Error
 
-	if t.deferToken.line != 0 {
+	if t.deferToken.Type != INVALID {
 		dt := t.deferToken
-		t.deferToken = tokenInfo{}
-		return dt.tok, dt.line, dt.col, dt.lit
+		t.deferToken = Token{}
+		return dt
 	}
 
 read_more:
@@ -421,24 +396,24 @@ read_more:
 		return t.match2eq(MUL, "*", MUL_A, "*=")
 	case rune == '/':
 		// '/' or '/='
-		tok, l, c, lit := t.match2eq(DIV, "/", DIV_A, "/=")
-		if tok == DIV_A {
-			return tok, l, c, lit
+		tok := t.match2eq(DIV, "/", DIV_A, "/=")
+		if tok.Type == DIV_A {
+			return tok
 		}
 
 		// '/' or '//'
-		tok, l, c, lit = t.match2(DIV, "/",
-					  '/', COMMENT_L, "//")
-		if tok == COMMENT_L {
-			line, col = l, c
+		tok = t.match2(DIV, "/",
+			'/', COMMENT_L, "//")
+		if tok.Type == COMMENT_L {
+			line, col = tok.Line, tok.Column
 			goto scan_comment_line
 		}
 
 		// '/' or '/*'
-		tok, l, c, lit = t.match2(DIV, "/",
-					  '*', COMMENT_ML, "/*")
-		if tok == COMMENT_ML {
-			line, col = l, c
+		tok = t.match2(DIV, "/",
+			'*', COMMENT_ML, "/*")
+		if tok.Type == COMMENT_ML {
+			line, col = tok.Line, tok.Column
 			goto scan_comment_multiline
 		}
 	case rune == '%':
@@ -446,31 +421,31 @@ read_more:
 	case rune == '=':
 		return t.match2eq(ASSIGN, "=", EQ, "==")
 	case rune == '>':
-		tok, l, c, lit := t.match2eq(GT, ">", GE, ">=")
-		if tok == GE {
-			return tok, l, c, lit
+		tok := t.match2eq(GT, ">", GE, ">=")
+		if tok.Type == GE {
+			return tok
 		}
 		return t.match3(GT, ">",
-				'>', SHIFT_R, ">>",
-				'=', SHIFT_R_A, ">>=")
+			'>', SHIFT_R, ">>",
+			'=', SHIFT_R_A, ">>=")
 	case rune == '<':
-		tok, l, c, lit := t.match2eq(LT, "<", LE, "<=")
-		if tok == LE {
-			return tok, l, c, lit
+		tok := t.match2eq(LT, "<", LE, "<=")
+		if tok.Type == LE {
+			return tok
 		}
 		return t.match3(LT, "<",
-				'<', SHIFT_L, "<<",
-				'=', SHIFT_L_A, "<<=")
+			'<', SHIFT_L, "<<",
+			'=', SHIFT_L_A, "<<=")
 	case rune == '#':
-		return LEN, t.line, t.col, "#"
+		return Token{LEN, t.line, t.col, "#"}
 	case rune == '[':
-		return LSB, t.line, t.col, "["
+		return Token{LSB, t.line, t.col, "["}
 	case rune == ']':
-		return RSB, t.line, t.col, "]"
+		return Token{RSB, t.line, t.col, "]"}
 	case rune == '.':
 		return t.match3(DOT, ".",
-				'.', DOTDOT, "..",
-				'.', DOTDOTDOT, "...")
+			'.', DOTDOT, "..",
+			'.', DOTDOTDOT, "...")
 	default:
 		goto read_more
 	}
@@ -481,11 +456,11 @@ scan_comment_line:
 		rune, err = t.readRune()
 		if err != nil {
 			panicOnNonEOF(err)
-			return COMMENT_L, line, col, t.flushBuffer()
+			return Token{COMMENT_L, line, col, t.flushBuffer()}
 		}
 
 		if rune == '\n' {
-			return COMMENT_L, line, col, t.flushBuffer()
+			return Token{COMMENT_L, line, col, t.flushBuffer()}
 		}
 
 		t.b.WriteRune(rune)
@@ -503,7 +478,7 @@ scan_comment_multiline:
 
 		if rune == '/' && t.lastRuneIsStar() {
 			t.b.WriteByte('/')
-			return COMMENT_ML, line, col, t.flushBuffer()
+			return Token{COMMENT_ML, line, col, t.flushBuffer()}
 		}
 
 		t.b.WriteRune(rune)
@@ -523,7 +498,7 @@ scan_raw_string:
 
 		if rune == '`' {
 			t.b.WriteRune(rune)
-			return RAW_STRING, line, col, t.flushBuffer()
+			return Token{RAW_STRING, line, col, t.flushBuffer()}
 		}
 	}
 
@@ -548,7 +523,7 @@ scan_string:
 			panic(Error(s))
 		case strrune:
 			t.b.WriteRune(rune)
-			return STRING, line, col, t.flushBuffer()
+			return Token{STRING, line, col, t.flushBuffer()}
 		}
 
 		t.b.WriteRune(rune)
@@ -562,7 +537,7 @@ scan_number:
 		rune, err = t.readRune()
 		if err != nil {
 			panicOnNonEOF(err)
-			return INT, line, col, t.flushBuffer()
+			return Token{INT, line, col, t.flushBuffer()}
 		}
 
 		switch {
@@ -574,7 +549,7 @@ scan_number:
 			goto scan_number_hex
 		default:
 			t.unreadRune()
-			return INT, line, col, t.flushBuffer()
+			return Token{INT, line, col, t.flushBuffer()}
 		}
 	}
 
@@ -601,12 +576,12 @@ scan_number_hex:
 		rune, err = t.readRune()
 		if err != nil {
 			panicOnNonEOF(err)
-			return INT, line, col, t.flushBuffer()
+			return Token{INT, line, col, t.flushBuffer()}
 		}
 
 		if !isHexDigit(rune) {
 			t.unreadRune()
-			return INT, line, col, t.flushBuffer()
+			return Token{INT, line, col, t.flushBuffer()}
 		}
 	}
 
@@ -622,25 +597,25 @@ scan_number_fraction:
 	// '1231.<EOF>' case, defer DOT token and return INT
 	if err != nil {
 		panicOnNonEOF(err)
-		t.setDeferToken(DOT, dline, dcol, ".")
+		t.deferToken = Token{DOT, dline, dcol, "."}
 		s := t.flushBuffer()
-		return INT, line, col, s[:len(s)-1]
+		return Token{INT, line, col, s[:len(s)-1]}
 	}
 
 	// '1231..' case, defer DOTDOT token and return INT
 	if rune == '.' {
-		t.setDeferToken(DOTDOT, dline, dcol, "..")
+		t.deferToken = Token{DOTDOT, dline, dcol, ".."}
 		s := t.flushBuffer()
-		return INT, line, col, s[:len(s)-1]
+		return Token{INT, line, col, s[:len(s)-1]}
 	}
 
 	// '1231.something' case, not a floating point number: unread rune,
 	// defer DOT and return INT
 	if !unicode.IsDigit(rune) {
 		t.unreadRune()
-		t.setDeferToken(DOT, dline, dcol, ".")
+		t.deferToken = Token{DOT, dline, dcol, "."}
 		s := t.flushBuffer()
-		return INT, line, col, s[:len(s)-1]
+		return Token{INT, line, col, s[:len(s)-1]}
 	}
 
 	// at this point it's a floating point number, let's parse the fraction part
@@ -650,7 +625,7 @@ scan_number_fraction:
 		rune, err = t.readRune()
 		if err != nil {
 			panicOnNonEOF(err)
-			return FLOAT, line, col, t.flushBuffer()
+			return Token{FLOAT, line, col, t.flushBuffer()}
 		}
 
 		switch {
@@ -660,7 +635,7 @@ scan_number_fraction:
 			goto scan_number_exponent
 		default:
 			t.unreadRune()
-			return FLOAT, line, col, t.flushBuffer()
+			return Token{FLOAT, line, col, t.flushBuffer()}
 		}
 	}
 
@@ -703,7 +678,7 @@ scan_number_exponent:
 		rune, err = t.readRune()
 		if err != nil {
 			panicOnNonEOF(err)
-			return FLOAT, line, col, t.flushBuffer()
+			return Token{FLOAT, line, col, t.flushBuffer()}
 		}
 
 		switch {
@@ -711,7 +686,7 @@ scan_number_exponent:
 			continue
 		default:
 			t.unreadRune()
-			return FLOAT, line, col, t.flushBuffer()
+			return Token{FLOAT, line, col, t.flushBuffer()}
 		}
 	}
 
@@ -732,17 +707,18 @@ scan_ident:
 		}
 	}
 
-	return INVALID, 0, 0, ""
+	return Token{INVALID, 0, 0, ""}
 }
 
 func main() {
-	t := NewLexer(os.Stdin)
+	lex := NewLexer(os.Stdin)
 	for {
-		tok, line, col, lit, err := t.Next()
+		tok, err := lex.Next()
 		if err != nil {
 			fmt.Println(err)
 			break
 		}
-		fmt.Printf("%s: (%d:%d) %s\n", tok, line, col, lit)
+		fmt.Printf("%s: (%d:%d) %s\n", tok.String(),
+			tok.Line, tok.Column, tok.Literal)
 	}
 }
